@@ -100,6 +100,23 @@ main:
     and a              ; Check for null terminator
     jr nz, .copyString ; Continue if a is not 0
 
+    ld a,  %10000000 ; Set bit 7 to enable sound.
+    ld [rNR52], a
+    ld a,  %01110111 ; Set left/right volume to 7
+    ld [rNR50], a
+    ld a,  %00010001 ; Set Sound 1 on left and right.
+    ld [rNR51], a
+    ld a,  %01000000 ; Set 50% Duty cycle and sound length 0.
+    ld [rNR11], a
+    ld a,  %11110000 ; Max envelope
+    ld [rNR12], a
+    ld a,  %01011000 ; low-order freq data
+    ld [rNR13], a
+    ld a,  %10000011 ; Initialize, Continuous, High Order Freq Data
+    ld [rNR14], a
+
+    jp @
+
     halt
 
 HelloWorldStr: db "C3", 0
