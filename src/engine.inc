@@ -26,6 +26,7 @@ ENDM
 wait_div: MACRO
     push af
     push bc
+    push hl
     ld a, \2
     ld c, \1
     ld hl, rDIV
@@ -36,6 +37,7 @@ wait_div: MACRO
     jr nc, .loopDiv2\@
     dec c
     jr nz, .loopDiv\@
+    pop hl
     pop bc
     pop af
 ENDM

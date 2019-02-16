@@ -87,39 +87,106 @@ _start:
 
 SECTION "main",ROMX,BANK[2]
 main:
-; This will print the string at the top-left corner of the screen
-    ld hl, _SCRN0+$21
-    ld de, HelloWorldStr
-.copyString
-    wait_vblank
-; Print Character
-    ld a, [de]
-    ld [hli], a
-    inc de
-
-    and a              ; Check for null terminator
-    jr nz, .copyString ; Continue if a is not 0
-
+;; Setup sound system
     ld a,  %10000000 ; Set bit 7 to enable sound.
     ld [rNR52], a
     ld a,  %01110111 ; Set left/right volume to 7
     ld [rNR50], a
     ld a,  %00010001 ; Set Sound 1 on left and right.
     ld [rNR51], a
-    ld a,  %01000000 ; Set 50% Duty cycle and sound length 0.
+
+;; Setup channel 1
+    ld a,  %01000000 ; Set 50% Duty cycle and sound length 64.
     ld [rNR11], a
     ld a,  %11110000 ; Max envelope
     ld [rNR12], a
-    ld a,  %01011000 ; low-order freq data
+
+;; Play notes
+   ld de, Song
+.playLoop
+    ld a,  [de]  ; load Note Code from Song
+    cp $ff
+    jp z, .playEnd
+    inc de
+
+    push de      ; Preserve Note Ptr in stack
+
+    ld d, a
+
+    and $07
+
+    ld hl, NoteTbl
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains note table index
+    ld a, [hl]   ; A contains note character
+    ld [_SCRN0+$21], a
+
+    ld a, d      ; Revert A from D.
+
+    swap a
+    and $07
+
+    ld hl, OctvTbl
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains octave table index
+    ld a, [hl]   ; A contains octave character
+    ld [_SCRN0+$22], a
+
+    ld a, d      ; Revert A from D.
+
+    and $07      ; Mask note.
+    sla a        ; Each element in table is two bytes.
+    ld b, a	 ; A contains offset into row of table.
+
+    ld a, d      ; Revert A from D.
+
+    and $70      ; Mask octave, use as index of row.
+    or b         ; A contains offset into table.
+
+    ld hl, FreqTbl
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains freqency table index
+
+;; Load frequency data
+    ld a,  [hl] ; low-order freq data
     ld [rNR13], a
-    ld a,  %10000011 ; Initialize, Continuous, High Order Freq Data
+
+    inc hl
+    ld a,  [hl] ; high-order freq data
+    xor $80     ; Set Initialize bit (unset if already set)
     ld [rNR14], a
 
-    jp @
+    wait_div 40, $fe
+
+    pop de       ; Revert Note Ptr from stack
+
+    jr .playLoop
+
+.playEnd
+    ld a,  %00000000 ; Reset bit 7 to disable sound.
+    ld [rNR52], a
 
     halt
 
-HelloWorldStr: db "C3", 0
+; Format: (Octave|Note), ...
+Song: db $32, $54, $30, $55, $ff
+
+OctvTbl: db "XXX45678"
+NoteTbl: db "ABCDEFGX"
+FreqTbl: ; Set bit 7 for invalid note.
+;     0     1     2     3     4     5     6     7
+;     A     B     C     D     E     F     G     X
+dw $8000,$8000,$8000,$8000,$8000,$8000,$8000,$8000 ; 1 (0)
+dw $8000,$8000,$8000,$8000,$8000,$8000,$8000,$8000 ; 2 (1)
+dw $8000,$8000,$8000,$8000,$8000,$8000,$8000,$8000 ; 3 (2)
+dw $8000,$8000,  47,  264,  459,  545,  710, $8000 ; 4 (3)
+dw  856,  986, 1045, 1154, 1252, 1296, 1379, $8000 ; 5 (4)
+dw 1452, 1517, 1547, 1601, 1650, 1672, 1713, $8000 ; 6 (5)
+dw 1750, 1782, 1797, 1824, 1849, 1860, 1880, $8000 ; 7 (6)
+dw 1899, 1915, 1923, 1936, 1948, 1954, 1964, $8000 ; 8 (7)
 
 SECTION "tiles", ROMX,BANK[1]
 TileStart:
