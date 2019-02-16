@@ -70,7 +70,7 @@ _start:
     ld [rNR52], a
 
     ld hl, TileStart
-    ld de, _VRAM+$800  ; Font starts at $8200
+    ld de, _VRAM+$200  ; Font starts at $8200
     ld bc, TileEnd - TileStart
     call memcpy
 
@@ -87,46 +87,22 @@ _start:
 
 SECTION "main",ROMX,BANK[2]
 main:
-; enable sprites
-    ld a, [rLCDC]
-    set 1, a
-    ld [rLCDC], a
-
-; Disable LCD before VRAM writes.
-    ld a, [rLCDC]
-    res 7, a
-    ld [rLCDC], a
-
-; Load sprite
-    ld a, $10
-    ld [_OAMRAM+1], a
-    ld a, $81
-    ld [_OAMRAM+2], a
-
-; Reenable LCD after VRAM writes.
-    ld a, [rLCDC]
-    set 7, a
-    ld [rLCDC], a
-    
-.moveRestart
-    ld a, $20
-.moveDown
-    ld [_OAMRAM+0], a
-    inc a
-    wait_div $02,$F0
+; This will print the string at the top-left corner of the screen
+    ld hl, _SCRN0+$21
+    ld de, HelloWorldStr
+.copyString
     wait_vblank
-    cp $40
-    jp nz, .moveDown
-.moveUp
-    ld [_OAMRAM+0], a
-    dec a
-    wait_div $02,$F0
-    wait_vblank
-    cp $20
-    jp nz, .moveUp
-    jp z, .moveRestart
+; Print Character
+    ld a, [de]
+    ld [hli], a
+    inc de
+
+    and a              ; Check for null terminator
+    jr nz, .copyString ; Continue if a is not 0
 
     halt
+
+HelloWorldStr: db "C3", 0
 
 SECTION "tiles", ROMX,BANK[1]
 TileStart:
