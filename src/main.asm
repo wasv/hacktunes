@@ -283,7 +283,7 @@ playSong:
     ld d, a
     call playNote
 
-    wait_div 40, $fe
+    wait_div 20, $fe
     jr .playLoop
 .playEnd
 
@@ -415,7 +415,9 @@ OctvTbl: db "XXX45678"
 NoteTbl: db "ABCDEFGX"
 
 ; Format: (Octave|Note), ...
-DefaultSong: db $40, $40, $35, $36, $35, $33, $34, $40, $ff
+DefaultSong: db $50, $51, $52, $53, $52, $51, $51, $50
+	     db	$50, $51, $52, $53, $52, $52, $53, $52, $30
+	     db $ff
 DefaultSongEnd:
 
 SECTION "song", WRAM0
