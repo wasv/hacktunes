@@ -48,7 +48,7 @@ _start:
 
 ; Starts on Bank 1 for tiles and pallettes.
 
-; Disable LCD during VRAM  writes.
+; Disable LCD during initial VRAM writes.
     ld a, [rLCDC]
     res 7, a
     ld [rLCDC], a
@@ -62,6 +62,10 @@ _start:
     ld hl, BGPal
     ld a, $00
     call loadBGPal
+
+;    ld hl, BGPalAlt
+;    ld a, $01
+;    call loadBGPal
 
 ; Reset scrolling
     ld a, 0
@@ -84,7 +88,11 @@ _start:
 ; Switch to Bank 2 for sound fns.
     ld a,$02
     ld [rROMB0],a
+    call main
+    halt
 
+SECTION "main", ROMX,BANK[2]
+main:
 ;; Setup sound system
     ld a,  %10000000 ; Set bit 7 to enable sound.
     ld [rNR52], a
@@ -99,14 +107,21 @@ _start:
     ld a,  %11110000 ; Max envelope
     ld [rNR12], a
 
+;; Copy song into RAM
+    ld hl, DefaultSong
+    ld de, WorkingSong
+    ld bc, DefaultSongEnd - DefaultSong
+    call memcpy
+
 ;;; Start of main loop
-;; Play notes
+;; Display Song
+.dispStart
    ld e,  1 ; Start in first column.
-   ld hl, Song
-.playLoop
+   ld hl, WorkingSong
+.dispLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
-    jp z, .playEnd
+    jr z, .dispEnd
 
     ld d, a
 
@@ -115,20 +130,63 @@ _start:
     ld e, a
 
     call dispNote
+    jr .dispLoop
+
+.dispEnd
+
+.getKey	 ; Stall on Keypress
+    get_key get_key_ABKEYS
+    jr z, .getKey
+
+    ;bit 0, a
+    ;call z, incOctave
+
+    ;bit 1, a
+    ;call z, incNote
+
+    bit 3, a
+    call nz, playSong
+
+    ;bit 3, a
+    ;call z, nextNote
+
+    
+    ;call playNote
+    ;wait_div 40, $fe
+
+    jr .dispStart
+    ret
+
+
+SECTION "sndfns", ROMX,BANK[2]
+
+playSong:
+
+   push af
+   push hl
+   ld hl, WorkingSong
+
+   ld a,  %00010001 ; Turn off Sound 1n left and right.
+   ld [rNR51], a
+.playLoop
+    ld a,  [hli] ; load Note Code from Song
+    cp $ff       ; Check for end of sequence.
+    jr z, .playEnd
+
+    ld d, a
     call playNote
 
     wait_div 40, $fe
 
     jr .playLoop
-
 .playEnd
-    ld a,  %00000000 ; Reset bit 7 to disable sound.
-    ld [rNR52], a
 
-    halt
+    ld a,  %00000000 ; Turn off Sound 1n left and right.
+    ld [rNR51], a
 
-
-SECTION "sndfns", ROMX,BANK[2]
+    pop hl
+    pop af
+    ret
 
 dispNote:
 ;;; Display note specified in D at screen offset in E.
@@ -150,6 +208,7 @@ dispNote:
     ld b, 0
     ld c, e
     add hl, bc   ; HL Contains screen offset
+    wait_lcd
     ld [hl], a   ; Put character at screen offset
 
 ;; Display Octave on Screen
@@ -167,6 +226,7 @@ dispNote:
     ld b, 0
     ld c, e
     add hl, bc   ; HL Contains screen offset
+    wait_lcd
     ld [hl], a   ; Put character at screen offset
 
     pop hl
@@ -212,12 +272,11 @@ playNote:
     pop af
     ret
 
-SECTION "sndtbls", ROMX,BANK[2]
-; Format: (Octave|Note), ...
-Song: db $32, $54, $30, $55, $ff
+SECTION "song", WRAM0
+WorkingSong: ds 32
+EndOfSong:
 
-OctvTbl: db "XXX45678"
-NoteTbl: db "ABCDEFGX"
+SECTION "sndtbls", ROMX,BANK[2]
 FreqTbl: ; Set bit 7 for invalid note.
 ;     0     1     2     3     4     5     6     7
 ;     A     B     C     D     E     F     G     X
@@ -229,6 +288,13 @@ dw  856,  986, 1045, 1154, 1252, 1296, 1379, $8000 ; 5 (4)
 dw 1452, 1517, 1547, 1601, 1650, 1672, 1713, $8000 ; 6 (5)
 dw 1750, 1782, 1797, 1824, 1849, 1860, 1880, $8000 ; 7 (6)
 dw 1899, 1915, 1923, 1936, 1948, 1954, 1964, $8000 ; 8 (7)
+
+OctvTbl: db "XXX45678"
+NoteTbl: db "ABCDEFGX"
+
+; Format: (Octave|Note), ...
+DefaultSong: db $32, $54, $30, $55, $ff
+DefaultSongEnd:
 
 SECTION "tiles", ROMX,BANK[1]
 TileStart:

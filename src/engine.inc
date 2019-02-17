@@ -10,6 +10,19 @@ wait_vblank : MACRO
     pop af
 ENDM
 
+; Wait till VRAM not in use.
+wait_lcd: MACRO
+    push af
+    push hl
+    ld hl, rSTAT
+.waitLCD\@
+    ld a, [hl]
+    and STATF_BUSY
+    jr nz, .waitLCD\@
+    pop hl
+    pop af
+ENDM
+
 ; Usage: stall_cyc n
 ; Stall for n cycles.
 wait_cyc : MACRO
@@ -42,6 +55,19 @@ wait_div: MACRO
     pop af
 ENDM
 
+; Usage: get_key b
+; b is bank to check 2=DPAD 1=ABKEYS
+; Returns key pressed in A
+get_key : MACRO
+    ld a, \1 << 4
+    ld [rP1], a
+    ld a, [rP1]
+    wait_cyc 20
+    cpl
+    and $0f
+ENDM
+get_key_DPAD   EQU 2
+get_key_ABKEYS EQU 1
 
 ; Usage: stall_key b
 ; b is bit number to check
@@ -64,3 +90,8 @@ wait_key : MACRO
     bit \1, a
     jp nz, .aRelease
 ENDM
+wait_key_SELECT EQU 3
+wait_key_START EQU 2
+wait_key_B EQU 1
+wait_key_A EQU 0
+
