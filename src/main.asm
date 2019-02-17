@@ -324,14 +324,11 @@ incDuration:
    ld a, [hl]
 
    cp $f0
-   jr nc, .overFlow
+   jr c, .noOverFlow
 
+   and $0f
 .noOverFlow
    add a, $10
-   jr .store
-
-.overFlow
-   and $0f
 
 .store
    ld [hl], a
