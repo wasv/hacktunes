@@ -113,6 +113,9 @@ main:
     ld bc, DefaultSongEnd - DefaultSong
     call memcpy
 
+    ld a, 0
+    ld [NoteIndex], a
+
 ;;; Start of main loop
 ;; Display Song
 .dispStart
@@ -138,21 +141,20 @@ main:
     get_key get_key_ABKEYS
     jr z, .getKey
 
-    ;bit 0, a
-    ;call z, incOctave
+    bit 0, a
+    call nz, incOctave
 
-    ;bit 1, a
-    ;call z, incNote
+    bit 1, a
+    call nz, incNote
+
+    bit 2, a
+    call nz, nextNote
 
     bit 3, a
     call nz, playSong
 
-    ;bit 3, a
-    ;call z, nextNote
-
     
-    ;call playNote
-    ;wait_div 40, $fe
+    wait_div 20, $fe
 
     jr .dispStart
     ret
@@ -160,14 +162,92 @@ main:
 
 SECTION "sndfns", ROMX,BANK[2]
 
+nextNote:
+   push hl
+   push hl
+
+   ld a, [NoteIndex]
+   inc a
+   cp (DefaultSongEnd - DefaultSong) - 1
+   jp nz, .noOverFlow
+
+.overFlow
+   ld a, 0
+
+.noOverFlow
+   ld [NoteIndex], a
+
+   pop hl
+   pop af
+   ret
+
+incOctave:
+   push af
+   push bc
+   push hl
+
+   ld a, [NoteIndex]
+   ld hl, WorkingSong
+   ld b, 0
+   ld c, a
+   add hl, bc ; HL now contains index of current note.
+   ld a, [hl]
+
+   add a, $10
+   bit 7, a
+   jp z, .noOverFlow
+
+.overFlow
+   and $0f
+   xor $30
+
+.noOverFlow
+   ld [hl], a
+   
+   pop hl
+   pop bc
+   pop af
+   ret
+
+incNote:
+   push af
+   push bc
+   push hl
+
+   ld a, [NoteIndex]
+   ld hl, WorkingSong
+   ld b, 0
+   ld c, a
+   add hl, bc ; HL now contains index of current note.
+   ld a, [hl]
+
+   inc a
+   bit 3, a
+   jp nz, .overFlow
+   bit 2, a
+   jp z, .noOverflow
+   bit 1, a
+   jp z, .noOverflow
+   bit 0, a
+   jp z, .noOverflow
+
+.overFlow
+   and $f0
+
+.noOverflow
+   ld [hl], a
+   
+   pop hl
+   pop bc
+   pop af
+   ret
+
 playSong:
 
    push af
    push hl
    ld hl, WorkingSong
 
-   ld a,  %00010001 ; Turn off Sound 1n left and right.
-   ld [rNR51], a
 .playLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
@@ -175,12 +255,11 @@ playSong:
 
     ld d, a
     call playNote
-
+    
     wait_div 40, $fe
-
     jr .playLoop
 .playEnd
-
+    
     ld a,  %00000000 ; Turn off Sound 1n left and right.
     ld [rNR51], a
 
@@ -263,18 +342,26 @@ playNote:
 
     inc hl
     ld a,  [hl] ; high-order freq data
-    xor $80     ; Set Initialize bit (unset if already set)
+    bit 7, a
+    jr nz, .dontPlay
+    set 7, a
     ld [rNR14], a
+
+.play
+    ld a,  %00010001 ; Turn off Sound 1n left and right.
+    ld [rNR51], a
+    jr .return
+
+.dontPlay
+    ld a,  %00000000 ; Turn off Sound 1n left and right.
+    ld [rNR51], a
+.return
 
     pop hl
     pop de
     pop bc
     pop af
     ret
-
-SECTION "song", WRAM0
-WorkingSong: ds 32
-EndOfSong:
 
 SECTION "sndtbls", ROMX,BANK[2]
 FreqTbl: ; Set bit 7 for invalid note.
@@ -295,6 +382,11 @@ NoteTbl: db "ABCDEFGX"
 ; Format: (Octave|Note), ...
 DefaultSong: db $32, $54, $30, $55, $ff
 DefaultSongEnd:
+
+SECTION "song", WRAM0
+NoteIndex: ds 1
+WorkingSong: ds DefaultSongEnd - DefaultSong
+EndOfSong:
 
 SECTION "tiles", ROMX,BANK[1]
 TileStart:
