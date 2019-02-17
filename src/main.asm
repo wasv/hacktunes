@@ -119,9 +119,8 @@ main:
 ;;; Start of main loop
 ;; Display Song
 .dispStart
-    ld e,  1 ; Start in first column.
+    ld e, 0  ; Start in first column.
     ld hl, WorkingSong
-    ld c, 0
 .dispLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
@@ -129,27 +128,26 @@ main:
 
     ld d, a
 
-    ld a, SCRN_VX_B ; Increment screen location.
-    add a, e
-    ld e, a
-
     call dispNote
 
 
     ld a, e
-    and %11100000 ; Load start of current row.
+;    and %11100000 ; Load start of current row.
 
     push hl
 
     push bc
-    ld hl, _SCRN0
-    ld b, 0
-    ld c, a
+    ld h, 0
+    ld l, a
+    REPT 5
+    add hl, hl
+    ENDR
+    ld bc, _SCRN0
     add hl, bc   ; HL Contains screen offset
     pop bc
 
     ld a, [NoteIndex] ; Check if current note
-    cp c
+    cp e
     jr nz, .notCurrentNote
     ld a, $7F
     jr .printArrow
@@ -161,8 +159,7 @@ main:
     ld [hl], a   ; Put character at screen offset
     pop hl
 
-
-    inc c
+    inc e
     jr .dispLoop
 
 .dispEnd
@@ -186,7 +183,7 @@ main:
 
     wait_div 20, $fe
 
-    jr .dispStart
+    jp .dispStart
     ret
 
 
@@ -313,15 +310,18 @@ dispNote:
     add hl, bc   ; HL Contains note table index
     ld a, [hl]   ; A contains note character
 
-    ld hl, _SCRN0
-    ld b, 0
-    ld c, e
+    ld h, 0
+    ld l, e
+    REPT 5
+    add hl, hl
+    ENDR
+    inc hl
+    ld bc, _SCRN0
     add hl, bc   ; HL Contains screen offset
     wait_lcd
     ld [hl], a   ; Put character at screen offset
 
 ;; Display Octave on Screen
-    inc e
     ld a, d      ; Revert A from D.
     swap a
     and $07
@@ -331,9 +331,14 @@ dispNote:
     add hl, bc   ; HL Contains octave table index
     ld a, [hl]   ; A contains octave character
 
-    ld hl, _SCRN0
-    ld b, 0
-    ld c, e
+    ld h, 0
+    ld l, e
+    REPT 5
+    add hl, hl
+    ENDR
+    inc hl
+    inc hl
+    ld bc, _SCRN0
     add hl, bc   ; HL Contains screen offset
     wait_lcd
     ld [hl], a   ; Put character at screen offset
@@ -410,7 +415,7 @@ OctvTbl: db "XXX45678"
 NoteTbl: db "ABCDEFGX"
 
 ; Format: (Octave|Note), ...
-DefaultSong: db $32, $54, $30, $55, $ff
+DefaultSong: db $40, $40, $35, $36, $35, $33, $34, $40, $ff
 DefaultSongEnd:
 
 SECTION "song", WRAM0
