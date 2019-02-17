@@ -63,9 +63,9 @@ _start:
     ld a, $00
     call loadBGPal
 
-;    ld hl, BGPalAlt
-;    ld a, $01
-;    call loadBGPal
+    ld hl, BGPalAlt
+    ld a, $08
+    call loadBGPal
 
 ; Reset scrolling
     ld a, 0
@@ -121,6 +121,9 @@ main:
     ld a, 0
     ld [NoteIndex], a
 
+    ld a, 0
+    ld [ParamIndex], a
+
 ;;; Start of main loop
 ;; Display Song
 .dispStart
@@ -129,52 +132,92 @@ main:
 .dispLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
-    jr z, .dispEnd
-
-    ld d, e
+    jp z, .dispEnd
 
     call dispNote
 
+; Display arrow indicator
+   push hl
 
-    ld a, e
+   ld h, 0
+   ld l, e
+   REPT 5
+   add hl, hl
+   ENDR
+   ld bc, _SCRN0
+   add hl, bc   ; HL Contains screen offset
 
-    push hl
-
-    push bc
-    ld h, 0
-    ld l, a
-    REPT 5
-    add hl, hl
-    ENDR
-    ld bc, _SCRN0
-    add hl, bc   ; HL Contains screen offset
-    pop bc
-
-    ld a, [NoteIndex] ; Check if current note
-    cp e
-    jr nz, .notCurrentNote
-    ld a, $7F
-    jr .printArrow
+   ld a, [NoteIndex] ; Check if current note
+   cp e
+   jr nz, .notCurrentNote
+   ld a, $7F
+   jr .printArrow
 .notCurrentNote
-    ld a, $00
+   ld a, $00
 .printArrow      ; A contains signal character
 
-    wait_lcd
-    ld [hl], a   ; Put character at screen offset
-    pop hl
+   wait_lcd
+   ld [hl], a   ; Put character at screen offset
 
-    inc e
-    jr .dispLoop
+   pop hl
 
+   inc e
+   jp .dispLoop
 .dispEnd
+
+;;; Color current column
+
+;; Set LCD Bank to 1
+   ld a, $01
+   wait_lcd
+   ld [rVBK], a
+   
+   ld bc, $400
+.colorBlank
+   dec bc
+   ld a, $00
+   ld hl, _SCRN0
+   add hl, bc
+
+   wait_lcd
+
+   ld [hl], a   ; Put character at screen offset
+   ld a, b
+   or c
+   jr nz, .colorBlank
+
+   ld d, 0
+   ld hl, _SCRN0
+   ld bc, SCRN_VX_B
+   ld a, [ParamIndex]
+   inc a
+   ld l, a     ; Offset by ParamIndex
+.colorColumn
+   ld a, $01
+   wait_lcd
+   ld [hl], a   ; Put character at screen offset
+   add hl, bc
+   inc d
+   ld a, d
+   cp SCRN_VY_B
+   jr nz, .colorColumn
+
+;; Reset LCD Bank to 0
+   ld a, $00
+   wait_lcd
+   ld [rVBK], a
 
 .getKey	 ; Stall on Keypress
     get_key get_key_ABKEYS
-    jr nz, .keyPressAB
-    get_key get_key_DPAD
-    jr nz, .keyPressDPAD
-    jp .getKey
+    jp z, .getKey
+
 .keyPressAB
+
+    bit 0, a
+    call nz, incParam
+
+    bit 1, a
+    call nz, nextParam
 
     bit 2, a
     call nz, nextNote
@@ -185,23 +228,26 @@ main:
     wait_div 20, $fe
     jp .dispStart
 
-.keyPressDPAD
-    bit 0, a
-    call nz, incOctave
-
-    bit 1, a
-    call nz, incNote
-
-    wait_div 20, $fe
-
-    jp .dispStart
     ret
 
 
 SECTION "sndfns", ROMX,BANK[2]
 
-nextNote:
+nextParam:
+   push af
    push hl
+
+   ld a, [ParamIndex]
+   inc a
+   and 3 ; Only 0-3 valid
+   ld [ParamIndex], a
+
+   pop hl
+   pop af
+   ret
+
+nextNote:
+   push af
    push hl
 
    ld a, [NoteIndex]
@@ -216,6 +262,82 @@ nextNote:
    ld [NoteIndex], a
 
    pop hl
+   pop af
+   ret
+
+incParam:
+   push af
+   ld a, [ParamIndex]
+   cp 0
+   call z, incNote
+   cp 1
+   call z, incOctave
+   cp 2
+   call z, incDuration
+   cp 3
+   call z, incDuty
+   pop af
+   ret
+
+incDuty:
+   push af
+   push bc
+   push hl
+
+   ld a, [NoteIndex]
+   ld hl, WorkingBeat
+   ld b, 0
+   ld c, a
+   add hl, bc ; HL now contains index of current note.
+   ld a, [hl]
+   swap a
+
+   cp $f0
+   jr nc, .overFlow
+
+.noOverFlow
+   add a, $10
+   jr .store
+
+.overFlow
+   and $0f
+
+.store
+   swap a
+   ld [hl], a
+
+   pop hl
+   pop bc
+   pop af
+   ret
+
+incDuration:
+   push af
+   push bc
+   push hl
+
+   ld a, [NoteIndex]
+   ld hl, WorkingBeat
+   ld b, 0
+   ld c, a
+   add hl, bc ; HL now contains index of current note.
+   ld a, [hl]
+
+   cp $f0
+   jr nc, .overFlow
+
+.noOverFlow
+   add a, $10
+   jr .store
+
+.overFlow
+   and $0f
+
+.store
+   ld [hl], a
+
+   pop hl
+   pop bc
    pop af
    ret
 
@@ -237,7 +359,7 @@ incOctave:
 
 .overFlow
    and $0f
-   xor $30
+   xor $30 ; Restart at 3, 0-2 are invalid octaves.
 
 .noOverFlow
    ld [hl], a
@@ -329,8 +451,7 @@ dispNote:
     REPT 5
     add hl, hl
     ENDR
-    inc hl
-    ld bc, _SCRN0
+    ld bc, _SCRN0+1 ; Put in first column
     add hl, bc   ; HL Contains screen offset
     wait_lcd
     ld [hl], a   ; Put character at screen offset
@@ -354,12 +475,56 @@ dispNote:
     REPT 5
     add hl, hl
     ENDR
-    inc hl
-    inc hl
-    ld bc, _SCRN0
+    ld bc, _SCRN0+2 ; Put in second column
     add hl, bc   ; HL Contains screen offset
     wait_lcd
     ld [hl], a   ; Put character at screen offset
+
+    ld hl, WorkingBeat
+    ld b, 0
+    ld c, e
+    add hl, bc ; HL now contains index of current note.
+    ld a, [hl]
+    swap a
+    and $0f
+    ld hl, HexTbl 
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains Hex table index
+    ld a, [hl]   ; A contains Duration character
+
+    ld h, 0
+    ld l, e
+    REPT 5
+    add hl, hl
+    ENDR
+    ld bc, _SCRN0+3
+    add hl, bc   ; HL Contains screen offset
+    wait_lcd
+    ld [hl], a   ; Put character at screen offset
+
+    ld hl, WorkingBeat
+    ld b, 0
+    ld c, e
+    add hl, bc ; HL now contains index of current note.
+    ld a, [hl]
+    and $0f
+    ld hl, HexTbl 
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains Hex table index
+    ld a, [hl]   ; A contains Duty character
+
+    ld h, 0
+    ld l, e
+    REPT 5
+    add hl, hl
+    ENDR
+    ld bc, _SCRN0+4
+    add hl, bc   ; HL Contains screen offset
+    wait_lcd
+    ld [hl], a   ; Put character at screen offset
+
 
     pop hl
     pop de
@@ -439,7 +604,7 @@ playNote:
     ld a, b
     cp d
     jp z, .onEnd
-    wait_div e, $10
+    wait_div e, $20
     inc b
     jr .onTick
 .onEnd
@@ -451,7 +616,7 @@ playNote:
     ld a, b
     cp $0f
     jr z, .offEnd
-    wait_div e, $10
+    wait_div e, $20
     inc b
     jr .offTick
 .offEnd 
@@ -482,18 +647,19 @@ HexTbl:  db "0123456789ABCDEF"
 
 ; Format: (Octave|Note), ...
 DefaultSong: db $50, $51, $52, $53, $52, $51, $51, $50
-	     db	$50, $51, $52, $53, $52, $52, $53, $52, $30
+	     db	$50, $30, $51, $52, $53, $52, $52, $53, $51
 	     db $ff
 DefaultSongEnd:
 
-DefaultBeat: db $8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f
-	     db	$8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f
+DefaultBeat: db $4f, $4f, $4f, $4f, $4f, $4f, $4f, $4f
+	     db	$4f, $80, $4f, $4f, $4f, $4f, $4f, $4f, $4f
 	     db $ff
 DefaultBeatEnd:
 
 
 SECTION "song", WRAM0
 NoteIndex: ds 1
+ParamIndex: ds 1
 WorkingSong: ds DefaultSongEnd - DefaultSong
 EndOfSong:
 WorkingBeat: ds DefaultBeatEnd - DefaultBeat
@@ -514,9 +680,5 @@ BGPal:
        %0000000000011111, %0111110000000000
 
 BGPalAlt:
-    dw %0000000000011111, %0000001111100000, \
-       %0111111111111111, %0111110000000000
-
-CoinPal:
-    dw %0111111111111111, %0001110110101110, \
-       %0011010111001111, %0010100011101111
+    dw %0111111111111111, %0000001111100000, \
+       %0000000000011111, %0011110111100000
