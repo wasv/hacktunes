@@ -40,11 +40,11 @@ wait_div: MACRO
     push af
     push bc
     push hl
-    ld a, \2
     ld c, \1
+    ld a, \2
     ld hl, rDIV
 .loopDiv\@
-    ld [rDIV], a
+    ld [hl], 0
 .loopDiv2\@
     cp [hl]
     jr nc, .loopDiv2\@

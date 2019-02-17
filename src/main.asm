@@ -113,6 +113,11 @@ main:
     ld bc, DefaultSongEnd - DefaultSong
     call memcpy
 
+    ld hl, DefaultBeat
+    ld de, WorkingBeat
+    ld bc, DefaultBeatEnd - DefaultBeat
+    call memcpy
+
     ld a, 0
     ld [NoteIndex], a
 
@@ -126,13 +131,12 @@ main:
     cp $ff       ; Check for end of sequence.
     jr z, .dispEnd
 
-    ld d, a
+    ld d, e
 
     call dispNote
 
 
     ld a, e
-;    and %11100000 ; Load start of current row.
 
     push hl
 
@@ -166,13 +170,11 @@ main:
 
 .getKey	 ; Stall on Keypress
     get_key get_key_ABKEYS
-    jr z, .getKey
-
-    bit 0, a
-    call nz, incOctave
-
-    bit 1, a
-    call nz, incNote
+    jr nz, .keyPressAB
+    get_key get_key_DPAD
+    jr nz, .keyPressDPAD
+    jp .getKey
+.keyPressAB
 
     bit 2, a
     call nz, nextNote
@@ -180,6 +182,15 @@ main:
     bit 3, a
     call nz, playSong
 
+    wait_div 20, $fe
+    jp .dispStart
+
+.keyPressDPAD
+    bit 0, a
+    call nz, incOctave
+
+    bit 1, a
+    call nz, incNote
 
     wait_div 20, $fe
 
@@ -272,37 +283,40 @@ incNote:
 playSong:
 
    push af
+   push de
    push hl
    ld hl, WorkingSong
 
+   ld e, 0
 .playLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
     jr z, .playEnd
 
-    ld d, a
     call playNote
+    inc e
 
-    wait_div 20, $fe
     jr .playLoop
 .playEnd
 
-    ld a,  %00000000 ; Turn off Sound 1n left and right.
-    ld [rNR51], a
-
     pop hl
+    pop de
     pop af
     ret
 
 dispNote:
-;;; Display note specified in D at screen offset in E.
+;;; Display note at offset E.
     push af
     push bc
     push de
     push hl
 
 ;; Display Note on Screen
-    ld a, d
+    ld hl, WorkingSong
+    ld b, 0
+    ld c, e
+    add hl, bc ; HL now contains index of current note.
+    ld a, [hl]
     and $07
     ld hl, NoteTbl
     ld b, 0
@@ -322,7 +336,11 @@ dispNote:
     ld [hl], a   ; Put character at screen offset
 
 ;; Display Octave on Screen
-    ld a, d      ; Revert A from D.
+    ld hl, WorkingSong
+    ld b, 0
+    ld c, e
+    add hl, bc ; HL now contains index of current note.
+    ld a, [hl]
     swap a
     and $07
     ld hl, OctvTbl
@@ -350,19 +368,24 @@ dispNote:
     ret
 
 playNote:
-;;; Play note specified in D.
+;;; Play note at offset E.
 
     push af
     push bc
     push de
     push hl
+
 ;; Translate note to frequency table index.
-    ld a, d      ; Revert A from D.
+    ld hl, WorkingSong
+    ld b, 0
+    ld c, e
+    add hl, bc   ; HL now contains address of current note.
+    ld a, [hl]
     and $07      ; Mask note.
     sla a        ; Each element in table is two bytes.
     ld b, a	 ; A contains offset into row of table.
 
-    ld a, d      ; Revert A from D.
+    ld a, [hl]
     and $70      ; Mask octave, use as index of row.
     or b         ; A contains offset into table.
 
@@ -385,12 +408,54 @@ playNote:
 .play
     ld a,  %00010001 ; Turn off Sound 1n left and right.
     ld [rNR51], a
-    jr .return
+    jr .finish
+
 
 .dontPlay
     ld a,  %00000000 ; Turn off Sound 1n left and right.
     ld [rNR51], a
-.return
+
+.finish
+    ld hl, WorkingBeat
+    ld b, 0
+    ld c, e
+    add hl, bc   ; HL now contains address of current beat.
+    ld a, [hl]
+
+    ld d, a
+
+    swap a
+    and $0f
+    ld e, a      ; E contains duration
+
+    ld a, d
+
+    and $0f
+    ld d, a      ; D contains duty
+
+    ld b, 0      ; B contains tick count
+
+.onTick          ; On while tick < duty
+    ld a, b
+    cp d
+    jp z, .onEnd
+    wait_div e, $10
+    inc b
+    jr .onTick
+.onEnd
+
+    ld a,  %00000000 ; Turn off Sound 1n left and right.
+    ld [rNR51], a
+
+.offTick          ; Off while tick > duty
+    ld a, b
+    cp $0f
+    jr z, .offEnd
+    wait_div e, $10
+    inc b
+    jr .offTick
+.offEnd 
+    
 
     pop hl
     pop de
@@ -413,6 +478,7 @@ dw 1899, 1915, 1923, 1936, 1948, 1954, 1964, $8000 ; 8 (7)
 
 OctvTbl: db "XXX45678"
 NoteTbl: db "ABCDEFGX"
+HexTbl:  db "0123456789ABCDEF"
 
 ; Format: (Octave|Note), ...
 DefaultSong: db $50, $51, $52, $53, $52, $51, $51, $50
@@ -420,10 +486,18 @@ DefaultSong: db $50, $51, $52, $53, $52, $51, $51, $50
 	     db $ff
 DefaultSongEnd:
 
+DefaultBeat: db $8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f
+	     db	$8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f, $8f
+	     db $ff
+DefaultBeatEnd:
+
+
 SECTION "song", WRAM0
 NoteIndex: ds 1
 WorkingSong: ds DefaultSongEnd - DefaultSong
 EndOfSong:
+WorkingBeat: ds DefaultBeatEnd - DefaultBeat
+EndOfBeat:
 
 SECTION "tiles", ROMX,BANK[1]
 TileStart:
