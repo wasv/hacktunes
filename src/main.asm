@@ -119,8 +119,9 @@ main:
 ;;; Start of main loop
 ;; Display Song
 .dispStart
-   ld e,  1 ; Start in first column.
-   ld hl, WorkingSong
+    ld e,  1 ; Start in first column.
+    ld hl, WorkingSong
+    ld c, 0
 .dispLoop
     ld a,  [hli] ; load Note Code from Song
     cp $ff       ; Check for end of sequence.
@@ -133,6 +134,35 @@ main:
     ld e, a
 
     call dispNote
+
+
+    ld a, e
+    and %11100000 ; Load start of current row.
+
+    push hl
+
+    push bc
+    ld hl, _SCRN0
+    ld b, 0
+    ld c, a
+    add hl, bc   ; HL Contains screen offset
+    pop bc
+
+    ld a, [NoteIndex] ; Check if current note
+    cp c
+    jr nz, .notCurrentNote
+    ld a, $7F
+    jr .printArrow
+.notCurrentNote
+    ld a, $00
+.printArrow      ; A contains signal character
+
+    wait_lcd
+    ld [hl], a   ; Put character at screen offset
+    pop hl
+
+
+    inc c
     jr .dispLoop
 
 .dispEnd
@@ -153,7 +183,7 @@ main:
     bit 3, a
     call nz, playSong
 
-    
+
     wait_div 20, $fe
 
     jr .dispStart
@@ -203,7 +233,7 @@ incOctave:
 
 .noOverFlow
    ld [hl], a
-   
+
    pop hl
    pop bc
    pop af
@@ -236,7 +266,7 @@ incNote:
 
 .noOverflow
    ld [hl], a
-   
+
    pop hl
    pop bc
    pop af
@@ -255,11 +285,11 @@ playSong:
 
     ld d, a
     call playNote
-    
+
     wait_div 40, $fe
     jr .playLoop
 .playEnd
-    
+
     ld a,  %00000000 ; Turn off Sound 1n left and right.
     ld [rNR51], a
 
