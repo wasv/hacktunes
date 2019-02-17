@@ -46,6 +46,8 @@ _start:
     di
     ld sp, $fffe
 
+; Starts on Bank 1 for tiles and pallettes.
+
 ; Disable LCD during VRAM  writes.
     ld a, [rLCDC]
     res 7, a
@@ -79,14 +81,10 @@ _start:
     set 7, a
     ld [rLCDC], a
 
-; Switch to Bank 2
+; Switch to Bank 2 for sound fns.
     ld a,$02
     ld [rROMB0],a
-    jp main
 
-
-SECTION "main",ROMX,BANK[2]
-main:
 ;; Setup sound system
     ld a,  %10000000 ; Set bit 7 to enable sound.
     ld [rNR52], a
@@ -96,52 +94,101 @@ main:
     ld [rNR51], a
 
 ;; Setup channel 1
-    ld a,  %01000000 ; Set 50% Duty cycle and sound length 64.
+    ld a,  %01000000 ; Set 50% Duty cycle and sound length 0.
     ld [rNR11], a
     ld a,  %11110000 ; Max envelope
     ld [rNR12], a
 
+;;; Start of main loop
 ;; Play notes
-   ld de, Song
+   ld e,  1 ; Start in first column.
+   ld hl, Song
 .playLoop
-    ld a,  [de]  ; load Note Code from Song
-    cp $ff
+    ld a,  [hli] ; load Note Code from Song
+    cp $ff       ; Check for end of sequence.
     jp z, .playEnd
-    inc de
-
-    push de      ; Preserve Note Ptr in stack
 
     ld d, a
 
-    and $07
+    ld a, SCRN_VX_B ; Increment screen location.
+    add a, e
+    ld e, a
 
+    call dispNote
+    call playNote
+
+    wait_div 40, $fe
+
+    jr .playLoop
+
+.playEnd
+    ld a,  %00000000 ; Reset bit 7 to disable sound.
+    ld [rNR52], a
+
+    halt
+
+
+SECTION "sndfns", ROMX,BANK[2]
+
+dispNote:
+;;; Display note specified in D at screen offset in E.
+    push af
+    push bc
+    push de
+    push hl
+
+;; Display Note on Screen
+    ld a, d
+    and $07
     ld hl, NoteTbl
     ld b, 0
     ld c, a
     add hl, bc   ; HL Contains note table index
     ld a, [hl]   ; A contains note character
-    ld [_SCRN0+$21], a
 
+    ld hl, _SCRN0
+    ld b, 0
+    ld c, e
+    add hl, bc   ; HL Contains screen offset
+    ld [hl], a   ; Put character at screen offset
+
+;; Display Octave on Screen
+    inc e
     ld a, d      ; Revert A from D.
-
     swap a
     and $07
-
     ld hl, OctvTbl
     ld b, 0
     ld c, a
     add hl, bc   ; HL Contains octave table index
     ld a, [hl]   ; A contains octave character
-    ld [_SCRN0+$22], a
 
+    ld hl, _SCRN0
+    ld b, 0
+    ld c, e
+    add hl, bc   ; HL Contains screen offset
+    ld [hl], a   ; Put character at screen offset
+
+    pop hl
+    pop de
+    pop bc
+    pop af
+    ret
+
+playNote:
+;;; Play note specified in D.
+
+    push af
+    push bc
+    push de
+    push hl
+;; Translate note to frequency table index.
     ld a, d      ; Revert A from D.
-
     and $07      ; Mask note.
     sla a        ; Each element in table is two bytes.
     ld b, a	 ; A contains offset into row of table.
 
     ld a, d      ; Revert A from D.
-
     and $70      ; Mask octave, use as index of row.
     or b         ; A contains offset into table.
 
@@ -159,18 +206,13 @@ main:
     xor $80     ; Set Initialize bit (unset if already set)
     ld [rNR14], a
 
-    wait_div 40, $fe
+    pop hl
+    pop de
+    pop bc
+    pop af
+    ret
 
-    pop de       ; Revert Note Ptr from stack
-
-    jr .playLoop
-
-.playEnd
-    ld a,  %00000000 ; Reset bit 7 to disable sound.
-    ld [rNR52], a
-
-    halt
-
+SECTION "sndtbls", ROMX,BANK[2]
 ; Format: (Octave|Note), ...
 Song: db $32, $54, $30, $55, $ff
 
