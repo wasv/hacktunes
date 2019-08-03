@@ -1,4 +1,4 @@
-TARGET=demo
+TARGET=hacktunes
 SRCS=$(wildcard src/*.asm)
 PNGS=$(wildcard data/*.png)
 OBJS=$(patsubst src/%.asm, build/%.o, $(SRCS))

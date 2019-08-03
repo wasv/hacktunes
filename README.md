@@ -1,6 +1,13 @@
 # hacktunes
 GameBoy Color Music Maker
 
+## Toolchain
+* rgbds - [rednex/rgbds](https://github.com/rednex/rgbds)
+
+## Testing
+* [BGB (GameBoy Emulator)](http://bgb.bircd.org/)
+* Tested on GBC with Inside Gadgets [GBxCartRW](https://shop.insidegadgets.com/product/gbxcart-rw/)
+
 # How To Use
 ## Controls
 * A - Increments selected parameter of selected note
